@@ -1,0 +1,4 @@
+for testing
+some text before
+var table = $table_json;
+some text after
