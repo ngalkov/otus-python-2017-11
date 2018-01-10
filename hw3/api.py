@@ -1,14 +1,16 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
-import abc
+# from abc import ABCMeta, abstractmethod
 import json
 import datetime
 import logging
 import hashlib
 import uuid
+import re
+import scoring
 from optparse import OptionParser
-from BaseHTTPServer import HTTPServer, BaseHTTPRequestHandler
+from http.server import HTTPServer, BaseHTTPRequestHandler
 
 SALT = "Otus"
 ADMIN_LOGIN = "admin"
@@ -36,44 +38,178 @@ GENDERS = {
 }
 
 
-class CharField(object):
-    pass
+def is_empty(value):
+    """Return True if value is value is set, but empty"""
+    return value in ["", (), [], {}, set()]
 
 
-class ArgumentsField(object):
-    pass
+class Field():
+    def __init__(self, required=False, nullable=True):
+        self.required = required
+        self.nullable = nullable
+
+    def validate(self, value):
+        """Return string with error description, empty string if no errors or None if value can't be validated"""
+        if value is None:
+            if self.required:
+                return "Field is required"
+        elif is_empty(value):
+            if not self.nullable:
+                return "Field can't be empty"
+        else:
+            return ""
+
+
+class CharField(Field):
+    def validate(self, value):
+        error = super().validate(value)
+        if error:
+            return error
+        # can't validate None
+        if value is None:
+            return None
+        if not isinstance(value, str):
+            return "Field must be a string"
+        return ""
+
+
+class ArgumentsField(Field):
+    def validate(self, value):
+        error = super().validate(value)
+        if error:
+            return error
+        # can't validate None
+        if value is None:
+            return None
+        if not isinstance(value, dict):
+            return "Field must be a dict"
+        return ""
 
 
 class EmailField(CharField):
-    pass
+    def validate(self, value):
+        error = super().validate(value)
+        if error:
+            return error
+        # can't validate None
+        if value is None:
+            return None
+        if "@" not in value:
+            return "Field must be a valid email"
+        return ""
 
 
-class PhoneField(object):
-    pass
+class PhoneField(Field):
+    def validate(self, value):
+        error = super().validate(value)
+        if error:
+            return error
+        # can't validate None
+        if value is None:
+            return None
+        if not re.search(r"^7\d{10}$", str(value)):
+            return "Field must be a valid phone"
+        return ""
 
 
-class DateField(object):
-    pass
+class DateField(CharField):
+    def validate(self, value):
+        error = super().validate(value)
+        if error:
+            return error
+        # can't validate None
+        if value is None:
+            return None
+        try:
+            datetime.datetime.strptime(value, "%d.%m.%Y").date()
+        except ValueError:
+            return "Date must have format: DD.MM.YYYY"
+        return ""
 
 
-class BirthDayField(object):
-    pass
+class BirthDayField(DateField):
+    def validate(self, value):
+        error = super().validate(value)
+        if error:
+            return error
+        # can't validate None
+        if value is None:
+            return None
+        birthday = datetime.datetime.strptime(value, "%d.%m.%Y").date()
+        today = datetime.date.today()
+        age = today.year - birthday.year
+        if (today.month, today.day) < (birthday.month, birthday.day):
+            age -= 1
+        if age > 70:
+            return "Birthday must be not more than 70 years from now"
+        return ""
 
 
-class GenderField(object):
-    pass
+class GenderField(Field):
+    def validate(self, value):
+        error = super().validate(value)
+        if error:
+            return error
+        # can't validate None
+        if value is None:
+            return None
+        if value not in GENDERS:
+            return "Gender must be a number %s, %s, %s" % (UNKNOWN, MALE, FEMALE)
+        return ""
 
 
-class ClientIDsField(object):
-    pass
+class ClientIDsField(Field):
+    def validate(self, value):
+        error = super().validate(value)
+        if error:
+            return error
+        # can't validate None
+        if value is None:
+            return None
+        if not isinstance(value, list):
+            return "Field must be a list of integer"
+        for client_id in value:
+            if not isinstance(client_id, int):
+                return "Field must be a list of integer"
+        return ""
 
 
-class ClientsInterestsRequest(object):
+class MetaRequest(type):
+    """Metaclass. Gather all Field attributes declared in class definition into new "schema" attribute"""
+    def __new__(mcs, name, bases, attrs):
+        schema = {}
+        for attr, value in attrs.items():
+            if isinstance(value, Field):
+                schema[attr] = value
+        attrs["schema"] = schema
+        for attr in schema:
+            del attrs[attr]
+        return super(MetaRequest, mcs).__new__(mcs, name, bases, attrs)
+
+
+class Request(metaclass=MetaRequest):
+    def __init__(self, request):
+        for name in self.schema:
+            value = request.get(name, None)
+            setattr(self, name, value)
+
+    def validate(self):
+        """Return dict with erroneous fields and their description or empty dict if no errors"""
+        errors = {}
+        for name, field in self.schema.items():
+            value = getattr(self, name)
+            field_error = field.validate(value)
+            if field_error:
+                errors[name] = field_error
+        return errors
+
+
+class ClientsInterestsRequest(Request):
     client_ids = ClientIDsField(required=True)
     date = DateField(required=False, nullable=True)
 
 
-class OnlineScoreRequest(object):
+class OnlineScoreRequest(Request):
     first_name = CharField(required=False, nullable=True)
     last_name = CharField(required=False, nullable=True)
     email = EmailField(required=False, nullable=True)
@@ -81,8 +217,31 @@ class OnlineScoreRequest(object):
     birthday = BirthDayField(required=False, nullable=True)
     gender = GenderField(required=False, nullable=True)
 
+    def validate(self):
+        errors = super().validate()
+        non_empty_pairs = [["phone", "email"],
+                           ["first_name", "last_name"],
+                           ["gender", "birthday"]]
+        all_pairs_empty = True
+        for pair in non_empty_pairs:
+            if pair[0] in self.non_empty_field() and pair[1] in self.non_empty_field():
+                all_pairs_empty = False
+                break
+        if all_pairs_empty:
+            errors["online_score"] = " At least one pair phone‑email, first name‑last name, gender‑birthday" + \
+                                     " must not be empty"
+        return errors
 
-class MethodRequest(object):
+    def non_empty_field(self):
+        not_empty = []
+        for field in self.schema:
+            value = getattr(self, field)
+            if value is not None and not is_empty(value):
+                not_empty.append(field)
+        return not_empty
+
+
+class MethodRequest(Request):
     account = CharField(required=False, nullable=True)
     login = CharField(required=True, nullable=True)
     token = CharField(required=True, nullable=True)
@@ -95,18 +254,65 @@ class MethodRequest(object):
 
 
 def check_auth(request):
-    if request.login == ADMIN_LOGIN:
-        digest = hashlib.sha512(datetime.datetime.now().strftime("%Y%m%d%H") + ADMIN_SALT).hexdigest()
+    if request.is_admin:
+        msg = (datetime.datetime.now().strftime("%Y%m%d%H") + ADMIN_SALT).encode()
     else:
-        digest = hashlib.sha512(request.account + request.login + SALT).hexdigest()
+        if request.account is None:
+            account = ""  # TODO: is it secure?
+        else:
+            account = request.account
+        msg = (account + request.login + SALT).encode()
+    digest = hashlib.sha512(msg).hexdigest()
     if digest == request.token:
         return True
     return False
 
 
 def method_handler(request, ctx, store):
-    response, code = None, None
-    return response, code
+    method_request = MethodRequest(request["body"])
+    errors = method_request.validate()
+    if errors:
+        return errors, INVALID_REQUEST
+    if not check_auth(method_request):
+        return ERRORS[FORBIDDEN], FORBIDDEN
+    handlers = {"online_score": online_score_handler,
+                "clients_interests": clients_interests_handler
+                }
+    handler = handlers.get(method_request.method, None)
+    if handler:
+        return handler(method_request, ctx, store)
+    return ERRORS[NOT_FOUND], NOT_FOUND
+
+
+def online_score_handler(request, ctx, store):
+    online_score_request = OnlineScoreRequest(request.arguments)
+    errors = online_score_request.validate()
+    if errors:
+        return errors, INVALID_REQUEST
+    ctx.update({"has": online_score_request.non_empty_field()})
+    if request.is_admin:
+        return {"score": 42}, OK
+    score = scoring.get_score(store,
+                              phone=online_score_request.phone,
+                              email=online_score_request.email,
+                              birthday=online_score_request.birthday,
+                              gender=online_score_request.gender,
+                              first_name=online_score_request.first_name,
+                              last_name=online_score_request.last_name)
+    return {"score": score}, OK
+
+
+def clients_interests_handler(request, ctx, store):
+    clients_interests_request = ClientsInterestsRequest(request.arguments)
+
+    errors = clients_interests_request.validate()
+    if errors:
+        return errors, INVALID_REQUEST
+
+    ctx.update({"nclients": len(clients_interests_request.client_ids)})
+
+    interests = {str(cid): scoring.get_interests(store, cid) for cid in clients_interests_request.client_ids}
+    return interests, OK
 
 
 class MainHTTPHandler(BaseHTTPRequestHandler):
@@ -134,7 +340,7 @@ class MainHTTPHandler(BaseHTTPRequestHandler):
             if path in self.router:
                 try:
                     response, code = self.router[path]({"body": request, "headers": self.headers}, context, self.store)
-                except Exception, e:
+                except Exception as e:
                     logging.exception("Unexpected error: %s" % e)
                     code = INTERNAL_ERROR
             else:
@@ -149,7 +355,7 @@ class MainHTTPHandler(BaseHTTPRequestHandler):
             r = {"error": response or ERRORS.get(code, "Unknown Error"), "code": code}
         context.update(r)
         logging.info(context)
-        self.wfile.write(json.dumps(r))
+        self.wfile.write(json.dumps(r).encode())
         return
 
 if __name__ == "__main__":

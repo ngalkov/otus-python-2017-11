@@ -1,5 +1,7 @@
 .idea/
-hw1/__pycache__/
+__pycache__/
+*.pyc
+
 hw1/log/
 hw1/reports/
 hw1/tests/timestamp.ts
