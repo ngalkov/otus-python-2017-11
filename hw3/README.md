@@ -175,5 +175,5 @@ Script outputs all events occurred during the script execution to stdout or to t
 
 ## Tests 
 To perform unit testing, run from command line:  
-`python unittest_api.py`
+`python test_api.py`
 
