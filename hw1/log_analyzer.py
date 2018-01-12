@@ -58,20 +58,6 @@ def check_config(config):
         return None
 
 
-def set_logger(filename=None):
-    logger = logging.getLogger(__name__)
-    logger.setLevel(logging.INFO)
-    if filename is None:
-        handler = logging.StreamHandler()
-    else:
-        handler = logging.FileHandler(filename)
-    formatter = logging.Formatter("[%(asctime)s] %(levelname).1s %(message)s",
-                                  datefmt="%Y.%m.%d %H:%M:%S")
-    handler.setFormatter(formatter)
-    logger.addHandler(handler)
-    return logger
-
-
 def get_last_log_name(log_dir, prefix):
     """Return the latest filename
 
@@ -101,7 +87,7 @@ def extract_date(text, date_pat=r"(?P<date>\d{8})", date_fmt="%Y%m%d"):
         return None
 
 
-def parse_log(log_path, logger=None):
+def parse_log(log_path):
     """Return dict in the form: {"url": [time1, time2, ...]} for unique urls in log_path"""
     line_pat = re.compile(
         r"(?P<remote_addr>[\d\.]{4})\s+"
@@ -140,8 +126,7 @@ def parse_log(log_path, logger=None):
                     continue
                 except ValueError:
                     pass
-        if logger:
-            logger.error("Error in line %s: %s" % (line_idx, line.strip()))
+        logging.error("Error in line %s: %s" % (line_idx, line.strip()))
     return url_times
 
 
@@ -199,23 +184,21 @@ def main(config):
     log_dir = config["LOG_DIR"]
     report_dir = config["REPORT_DIR"]
     report_size = int(config["REPORT_SIZE"])
-    logger = set_logger(config.get("LOGGING", None))
-    logger.info("Starting log analyzer")
 
     # Log file searching
     log_name = get_last_log_name(log_dir, LOG_NAME_PREFIX)
     if not log_name:
-        logger.error("No log files found in directory %s" % log_dir)
+        logging.error("No log files found in directory %s" % log_dir)
         sys.exit()
     log_date = extract_date(log_name)
-    logger.info("Last log file %s found" % os.path.join(log_dir, log_name))
+    logging.info("Last log file %s found" % os.path.join(log_dir, log_name))
 
     # Report file searching
     report_name, report_ext = os.path.splitext(os.path.basename(REPORT_TEMPLATE))
     report_path = os.path.join(report_dir,
                                report_name + "-" + log_date.strftime("%Y.%m.%d") + report_ext)
     if os.path.exists(report_path):
-        logger.info("Report file %s already exists" % report_path)
+        logging.info("Report file %s already exists" % report_path)
         sys.exit()
 
     # Process log
@@ -223,26 +206,26 @@ def main(config):
     try:
         request_times = parse_log(log_path)
     except OSError:
-        logger.exception("Unable to open log file %s" % log_path)
+        logging.exception("Unable to open log file %s" % log_path)
         sys.exit()
-    logger.info("%s unique urls found" % len(request_times))
+    logging.info("%s unique urls found" % len(request_times))
     url_statistics = count_statistics(request_times)
     url_statistics.sort(reverse=True, key=lambda k: k["time_sum"])
     try:
         make_report(report_path, REPORT_TEMPLATE, url_statistics[:report_size])
-        logger.info("Report file %s created successfully" % report_path)
+        logging.info("Report file %s created successfully" % report_path)
     except OSError:
-        logger.exception("Unable to create report file %s" % report_path)
+        logging.exception("Unable to create report file %s" % report_path)
         sys.exit()
 
     # Finish work
     write_timestamp(TS_FILE)
-    logger.info("Stopping log analyzer")
+    logging.info("Stopping log analyzer")
 
 
 if __name__ == "__main__":
     # Script initialization
-    # As logger is not defined yet, send error messages to stderr
+    # As logging is not defined yet, send error messages to stderr
     args = parse_args()
     try:
         config = load_config(args.config_path, DEFAULT_CONFIG)
@@ -256,4 +239,9 @@ if __name__ == "__main__":
     if config_error:
         print(config_error, sys.stderr)
         sys.exit()
+    logging.basicConfig(filename=config.get("LOGGING", None),
+                        level=logging.INFO,
+                        format="[%(asctime)s] %(levelname).1s %(message)s",
+                        datefmt="%Y.%m.%d %H:%M:%S")
+    logging.info("Starting log analyzer")
     main(config)
