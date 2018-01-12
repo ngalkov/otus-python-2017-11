@@ -56,7 +56,6 @@ def check_config(config):
             if not os.path.exists(config[key]):
                 return "%s: %s - path doesn't exist-" % (key, config[key])
         return None
-    pass
 
 
 def set_logger(filename=None):
@@ -188,7 +187,6 @@ def make_report(report_path, template, url_statistics):
     content = content.replace('$table_json', str(url_statistics))
     with open(report_path, "w") as f:
         f.write(content)
-    pass
 
 
 def write_timestamp(ts_file):
