@@ -6,14 +6,14 @@ import unittest
 import datetime
 
 
-class TestCmdLoneArgs(unittest.TestCase):
-    def test_config_path_present(self):
-        args = ["--config", "./log_analyzer.conf"]
-        self.assertEqual(parse_args(args).config_path, args[1])
-
-    def test_config_path_omitted(self):
-        args = []
-        self.assertEqual(parse_args(args).config_path, DEFAULT_CONFIG_PATH)
+# class TestCmdLoneArgs(unittest.TestCase):
+#     def test_config_path_present(self):
+#         args = ["--config", "./log_analyzer.conf"]
+#         self.assertEqual(parse_args(args).config_path, args[1])
+#
+#     def test_config_path_omitted(self):
+#         args = []
+#         self.assertEqual(parse_args(args).config_path, DEFAULT_CONFIG_PATH)
 
 
 class TestInitialization(unittest.TestCase):

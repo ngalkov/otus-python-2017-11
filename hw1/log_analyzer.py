@@ -24,14 +24,14 @@ TS_FILE = "./log_analyzer.ts"
 LOG_NAME_PREFIX = "nginx-access-ui.log-"
 
 
-def parse_args(args):
+def parse_args():
     """Parse command line arguments"""
     parser = argparse.ArgumentParser()
     parser.add_argument("--config",
                         help="path to config file",
                         default=DEFAULT_CONFIG_PATH,
                         dest="config_path")
-    return parser.parse_args(args)
+    return parser.parse_args()
 
 
 def load_config(config_path, default_config):
@@ -245,7 +245,7 @@ def main(config):
 if __name__ == "__main__":
     # Script initialization
     # As logger is not defined yet, send error messages to stderr
-    args = parse_args(sys.argv[1:])
+    args = parse_args()
     try:
         config = load_config(args.config_path, DEFAULT_CONFIG)
     except OSError:
