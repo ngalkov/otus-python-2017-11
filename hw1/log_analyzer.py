@@ -185,7 +185,7 @@ def main(config):
     # Log file searching
     last_log = get_last_log(log_dir, LOG_NAME_PREFIX)
     if not last_log.name:
-        logging.error("No log files found in directory %s" % log_dir)
+        logging.info("No log files found in directory %s" % log_dir)
         sys.exit()
     logging.info("Last log file %s found" % os.path.join(log_dir, last_log.name))
 
