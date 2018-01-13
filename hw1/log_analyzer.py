@@ -10,6 +10,7 @@ import logging
 import datetime
 import gzip
 import statistics
+from collections import namedtuple
 
 DEFAULT_CONFIG = {
     "REPORT_SIZE": 1000,
@@ -58,33 +59,29 @@ def check_config(config):
         return None
 
 
-def get_last_log_name(log_dir, prefix):
+def get_last_log(log_dir, prefix):
     """Return the latest filename
 
-    Scan log_dir for filenames starting with prefix and return
-    filename with latest date in filename or None if no such files"""
-    log_names = []
+    Scan log_dir for file names starting with prefix and return
+    namedtuple with name and date of file with latest date in name"""
+    last_log_name = None
+    last_log_date = datetime.date.min
     for entry in os.listdir(log_dir):
         if not os.path.isfile(os.path.join(log_dir, entry)):
             continue
         if entry.startswith(prefix):
-            log_names.append(entry)
-    if log_names:
-        log_name = max(log_names, key=lambda filename: filename.replace(prefix, ""))
-        return log_name
-    else:
-        return None
-
-
-def extract_date(text, date_pat=r"(?P<date>\d{8})", date_fmt="%Y%m%d"):
-    date_match = re.search(date_pat, text)
-    if date_match:
-        try:
-            return datetime.datetime.strptime(date_match.group("date"), date_fmt).date()
-        except ValueError:
-            return None
-    else:
-        return None
+            try:
+                date_str = entry.replace(prefix, "")
+                if date_str.endswith(".gz"):
+                    date_str = date_str[:-3]
+                log_date = datetime.datetime.strptime(date_str, "%Y%m%d").date()
+            except ValueError:
+                logging.error("Unable to extract date from log file name: %s" % entry)
+            else:
+                if log_date > last_log_date:
+                    last_log_name = entry
+                    last_log_date = log_date
+    return namedtuple("LastLog", ["name", "date"])._make([last_log_name, last_log_date])
 
 
 def parse_log(log_path):
@@ -186,23 +183,22 @@ def main(config):
     report_size = int(config["REPORT_SIZE"])
 
     # Log file searching
-    log_name = get_last_log_name(log_dir, LOG_NAME_PREFIX)
-    if not log_name:
+    last_log = get_last_log(log_dir, LOG_NAME_PREFIX)
+    if not last_log.name:
         logging.error("No log files found in directory %s" % log_dir)
         sys.exit()
-    log_date = extract_date(log_name)
-    logging.info("Last log file %s found" % os.path.join(log_dir, log_name))
+    logging.info("Last log file %s found" % os.path.join(log_dir, last_log.name))
 
     # Report file searching
     report_name, report_ext = os.path.splitext(os.path.basename(REPORT_TEMPLATE))
     report_path = os.path.join(report_dir,
-                               report_name + "-" + log_date.strftime("%Y.%m.%d") + report_ext)
+                               report_name + "-" + last_log.date.strftime("%Y.%m.%d") + report_ext)
     if os.path.exists(report_path):
         logging.info("Report file %s already exists" % report_path)
         sys.exit()
 
     # Process log
-    log_path = os.path.join(log_dir, log_name)
+    log_path = os.path.join(log_dir, last_log.name)
     try:
         request_times = parse_log(log_path)
     except OSError:

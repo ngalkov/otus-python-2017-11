@@ -39,20 +39,18 @@ class TestInitialization(unittest.TestCase):
 
 
 class TestLogsProcessing(unittest.TestCase):
-    def test_extract_date(self):
-        # valid log name
-        self.assertEqual(extract_date("log.name-20010203", r"^log.name-(?P<date>\d{8})", "%Y%m%d"),
-                         datetime.date(2001, 2, 3))
-        # no date
-        self.assertIsNone(extract_date("no_date", r"(?P<date>\d{8})", "%Y%m%d"))
-        # bad date
-        self.assertIsNone(extract_date("bad.date-20019999", r"^bad.date-(?P<date>\d{8})", "%Y%m%d"))
-
     def test_get_last_log(self):
         # valid log name
-        self.assertEqual(get_last_log_name("./tests/log", "log-test-date"), "log-test-date-20010201")
-        # no log files in log dir
-        self.assertIsNone(get_last_log_name("./tests/log", "no-such-log-file-"))
+        self.assertTupleEqual(get_last_log("./tests/log", "log-test-date-"),
+                              ("log-test-date-20010201", datetime.date(2001, 2, 1)))
+        # log with invalid name
+        with self.assertLogs() as cm:
+            last_log = get_last_log("./tests/log/invalid_log_name", "log-test-date-")
+        self.assertEqual(cm.output,
+                         ["ERROR:root:Unable to extract date from log file name: log-test-date-2001",
+                          "ERROR:root:Unable to extract date from log file name: log-test-date-20019999"])
+        # no valid log files in log dir
+        self.assertTupleEqual(get_last_log("./tests/log", "no-such-log-file-"), (None, datetime.date.min))
 
     def test_parse_log(self):
         # test both example logs - plain text and gzip
@@ -99,14 +97,14 @@ class TestLogsProcessing(unittest.TestCase):
             for key in correct_urls[url]:
                 self.assertAlmostEqual(correct_urls[url][key], counted_urls[url][key], places=3)
 
-    # def test_make_report(self):
-    #     # test whether report file created
-    #     test_value = datetime.datetime.now().timestamp()
-    #     make_report("./tests/reports/report.txt", "./tests/reports/template.txt", [test_value])
-    #     with open("./tests/reports/report.txt") as f:
-    #         for line in f:
-    #             if line.strip().startswith("var table"):
-    #                 self.assertEqual(line.strip(), "var table = [%s];" % test_value)
+    def test_make_report(self):
+        # test whether report file created
+        test_value = datetime.datetime.now().timestamp()
+        make_report("./tests/reports/report.txt", "./tests/reports/template.txt", [test_value])
+        with open("./tests/reports/report.txt") as f:
+            for line in f:
+                if line.strip().startswith("var table"):
+                    self.assertEqual(line.strip(), "var table = [%s];" % test_value)
 
 
 if __name__ == '__main__':
