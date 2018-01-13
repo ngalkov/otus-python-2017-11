@@ -244,4 +244,10 @@ if __name__ == "__main__":
                         format="[%(asctime)s] %(levelname).1s %(message)s",
                         datefmt="%Y.%m.%d %H:%M:%S")
     logging.info("Starting log analyzer")
-    main(config)
+
+    try:
+        main(config)
+    except SystemExit:
+        pass  # events before sys.exit() are already logged
+    except:
+        logging.exception("An unexpected error occurred:")
