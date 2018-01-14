@@ -3,6 +3,7 @@
 
 from log_analyzer import *
 import unittest
+from unittest.mock import patch
 import datetime
 
 
@@ -55,12 +56,12 @@ class TestLogsProcessing(unittest.TestCase):
     def test_parse_log(self):
         # test both example logs - plain text and gzip
         # examples ./tests/log/log_example and ./tests/log/log_example.gz are equal and contain lines:
-        # 1 - valid line, url - "/test/url/A", time as 0.0
-        # 2 - valid line, url - "/test/url/A", time as .0
-        # 3 - valid line, url - "/test/url/A", time as 0
-        # 4 - valid line, url - "/test/url/B"
-        # 5 - invalid line - bad time
-        # 6 - invalid line - bad url
+        # 1 - valid line, url - "/test/url/A", time has format 0.0
+        # 2 - invalid line - bad time
+        # 3 - invalid line - bad url
+        # 4 - valid line, url - "/test/url/A", time has format .0
+        # 5 - valid line, url - "/test/url/A", time has format 0
+        # 6 - valid line, url - "/test/url/B"
         for log_example in ["./tests/log/log_example", "./tests/log/log_example.gz"]:
             # test valid lines
             self.assertEqual(parse_log(log_example),
@@ -69,8 +70,14 @@ class TestLogsProcessing(unittest.TestCase):
             with self.assertLogs() as cm:
                 parse_log(log_example)
             self.assertEqual(list(map(lambda t: t[:27], cm.output)),    # strip long lines for brevity
-                             ['ERROR:root:Error in line 5:',
-                              'ERROR:root:Error in line 6:'])
+                             ['ERROR:root:Error in line 2:',
+                              'ERROR:root:Error in line 3:'])
+
+    @patch("log_analyzer.LINES_THRESHOLD", 1)
+    def test_log_and_exit_on_error_threshold(self):
+        with self.assertLogs() as cm:
+            self.assertRaises(SystemExit, parse_log, "./tests/log/log_example")
+        self.assertEqual(cm.output[2], "ERROR:root:Too many errors: 3 lines read, 2 errors found")
 
     def test_count_statistics(self):
         # test whether counted values and correct values are almost equal

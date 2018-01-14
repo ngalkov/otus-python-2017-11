@@ -23,6 +23,8 @@ CONFIG_SECTION_NAME = "MAIN"
 REPORT_TEMPLATE = "./report.html"
 TS_FILE = "./log_analyzer.ts"
 LOG_NAME_PREFIX = "nginx-access-ui.log-"
+ERROR_THRESHOLD = 0.5
+LINES_THRESHOLD = 100  # check at least this amount before exit on ERROR_THRESHOLD
 
 
 def parse_args():
@@ -105,6 +107,7 @@ def parse_log(log_path):
 
     url_times = {}
     line_idx = 0
+    error_count = 0
     for line in xreadlines(log_path):
         # for debag:
         # if line_idx % 1000 == 0: print("line %s parsed" % line_idx)
@@ -120,10 +123,16 @@ def parse_log(log_path):
                 try:
                     times.append(float(request_time))
                     url_times[url] = times
+                    # line is parsed without errors - go to next line
                     continue
                 except ValueError:
                     pass
+        # an error has occurred
         logging.error("Error in line %s: %s" % (line_idx, line.strip()))
+        error_count += 1
+        if line_idx > LINES_THRESHOLD and float(error_count)/line_idx > ERROR_THRESHOLD:
+            logging.error("Too many errors: %i lines read, %i errors found" % (line_idx, error_count))
+            sys.exit()
     return url_times
 
 
