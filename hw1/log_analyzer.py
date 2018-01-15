@@ -21,8 +21,10 @@ DEFAULT_CONFIG = {
 DEFAULT_CONFIG_PATH = "./log_analyzer.conf"
 CONFIG_SECTION_NAME = "MAIN"
 REPORT_TEMPLATE = "./report.html"
+REPORT_ENCODING = "utf-8"
 TS_FILE = "./log_analyzer.ts"
 LOG_NAME_PREFIX = "nginx-access-ui.log-"
+LOG_ENCODING = "utf-8"
 ERROR_THRESHOLD = 0.5
 LINES_THRESHOLD = 100  # check at least this amount before exit on ERROR_THRESHOLD
 
@@ -140,9 +142,9 @@ def xreadlines(log_path):
     """Generator to read file one line at a time"""
     try:
         if log_path.endswith(".gz"):
-            log = gzip.open(log_path, 'rt')
+            log = gzip.open(log_path, 'rt', encoding=LOG_ENCODING)
         else:
-            log = open(log_path)
+            log = open(log_path, encoding=LOG_ENCODING)
         for line in log:
             yield line
     except:
@@ -172,11 +174,11 @@ def count_statistics(urls):
     return url_statistics
 
 
-def make_report(report_path, template, url_statistics):
-    with open(template) as f:
+def make_report(report_path, template, encoding, url_statistics):
+    with open(template, encoding=encoding) as f:
         content = f.read()
     content = content.replace('$table_json', str(url_statistics))
-    with open(report_path, "w") as f:
+    with open(report_path, "w", encoding=encoding) as f:
         f.write(content)
 
 
@@ -217,7 +219,7 @@ def main(config):
     url_statistics = count_statistics(request_times)
     url_statistics.sort(reverse=True, key=lambda k: k["time_sum"])
     try:
-        make_report(report_path, REPORT_TEMPLATE, url_statistics[:report_size])
+        make_report(report_path, REPORT_TEMPLATE, REPORT_ENCODING, url_statistics[:report_size])
         logging.info("Report file %s created successfully" % report_path)
     except OSError:
         logging.exception("Unable to create report file %s" % report_path)
@@ -253,6 +255,6 @@ if __name__ == "__main__":
     try:
         main(config)
     except SystemExit:
-        pass  # events before sys.exit() are already logged
+        pass  # events before sys.exit() have already been logged
     except:
         logging.exception("An unexpected error occurred:")

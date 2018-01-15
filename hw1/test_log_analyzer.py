@@ -107,7 +107,7 @@ class TestLogsProcessing(unittest.TestCase):
     def test_make_report(self):
         # test whether report file created
         test_value = datetime.datetime.now().timestamp()
-        make_report("./tests/reports/report.txt", "./tests/reports/template.txt", [test_value])
+        make_report("./tests/reports/report.txt", "./tests/reports/template.txt", REPORT_ENCODING, [test_value])
         with open("./tests/reports/report.txt") as f:
             for line in f:
                 if line.strip().startswith("var table"):
