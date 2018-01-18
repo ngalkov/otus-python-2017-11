@@ -42,14 +42,16 @@ class TestInitialization(unittest.TestCase):
 class TestLogsProcessing(unittest.TestCase):
     def test_get_last_log(self):
         # valid log name
-        self.assertTupleEqual(get_last_log("./tests/log", "log-test-date-"),
+        self.assertTupleEqual(get_last_log("./tests/log/plain_text_last", "log-test-date-"),
                               ("log-test-date-20010201", datetime.date(2001, 2, 1)))
+        self.assertTupleEqual(get_last_log("./tests/log/gzip_last", "log-test-date-"),
+                              ("log-test-date-20010201.gz", datetime.date(2001, 2, 1)))
         # log with invalid name
         with self.assertLogs() as cm:
             last_log = get_last_log("./tests/log/invalid_log_name", "log-test-date-")
         self.assertEqual(cm.output,
-                         ["ERROR:root:Unable to extract date from log file name: log-test-date-2001",
-                          "ERROR:root:Unable to extract date from log file name: log-test-date-20019999"])
+                         ["ERROR:root:Unable to extract date from log file name: log-test-date-20019999",
+                          "ERROR:root:Unable to extract date from log file name: log-test-date-20019999.gz"])
         # no valid log files in log dir
         self.assertTupleEqual(get_last_log("./tests/log", "no-such-log-file-"), (None, datetime.date.min))
 

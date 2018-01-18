@@ -68,16 +68,16 @@ def get_last_log(log_dir, prefix):
 
     Scan log_dir for file names starting with prefix and return
     namedtuple with name and date of file with latest date in name"""
+    log_pat = r"^" + prefix + r"(\d{8})" + r"(.gz)?" + r"$"
     last_log_name = None
     last_log_date = datetime.date.min
     for entry in os.listdir(log_dir):
         if not os.path.isfile(os.path.join(log_dir, entry)):
             continue
-        if entry.startswith(prefix):
+        entry_match = re.search(log_pat, entry)
+        if entry_match:
             try:
-                date_str = entry.replace(prefix, "")
-                if date_str.endswith(".gz"):
-                    date_str = date_str[:-3]
+                date_str = entry_match.group(1)
                 log_date = datetime.datetime.strptime(date_str, "%Y%m%d").date()
             except ValueError:
                 logging.error("Unable to extract date from log file name: %s" % entry)
