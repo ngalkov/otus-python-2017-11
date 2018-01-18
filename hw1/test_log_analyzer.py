@@ -66,8 +66,8 @@ class TestLogsProcessing(unittest.TestCase):
         # 6 - valid line, url - "/test/url/B"
         for log_example in ["./tests/log/log_example", "./tests/log/log_example.gz"]:
             # test valid lines
-            self.assertEqual(parse_log(log_example),
-                             {"/test/url/A": [0.12, 0.34, 1.0], "/test/url/B": [0.123]})
+            self.assertTupleEqual(parse_log(log_example),
+                                  ({"/test/url/A": [0.12, 0.34, 1.0], "/test/url/B": [0.123]}, 6,2))
             # test whether invalid lines were logged
             with self.assertLogs() as cm:
                 parse_log(log_example)
@@ -75,15 +75,9 @@ class TestLogsProcessing(unittest.TestCase):
                              ['ERROR:root:Error in line 2:',
                               'ERROR:root:Error in line 3:'])
 
-    @patch("log_analyzer.LINES_THRESHOLD", 1)
-    def test_log_and_exit_on_error_threshold(self):
-        with self.assertLogs() as cm:
-            self.assertRaises(SystemExit, parse_log, "./tests/log/log_example")
-        self.assertEqual(cm.output[2], "ERROR:root:Too many errors: 3 lines read, 2 errors found")
-
     def test_count_statistics(self):
         # test whether counted values and correct values are almost equal
-        counted_urls = count_statistics(parse_log("./tests/log/log_example"))
+        counted_urls = count_statistics(parse_log("./tests/log/log_example")[0])
         correct_urls = [
             {"url": "/test/url/A",
              "count": 3,

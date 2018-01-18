@@ -111,8 +111,6 @@ def parse_log(log_path):
     line_idx = 0
     error_count = 0
     for line in xreadlines(log_path):
-        # for debag:
-        # if line_idx % 1000 == 0: print("line %s parsed" % line_idx)
         line_idx += 1
         line_match = line_pat.search(line)
         if line_match:
@@ -132,10 +130,7 @@ def parse_log(log_path):
         # an error has occurred
         logging.error("Error in line %s: %s" % (line_idx, line.strip()))
         error_count += 1
-        if line_idx > LINES_THRESHOLD and float(error_count)/line_idx > ERROR_THRESHOLD:
-            logging.error("Too many errors: %i lines read, %i errors found" % (line_idx, error_count))
-            sys.exit()
-    return url_times
+    return url_times, line_idx, error_count
 
 
 def xreadlines(log_path):
@@ -211,9 +206,13 @@ def main(config):
     # Process log
     log_path = os.path.join(log_dir, last_log.name)
     try:
-        request_times = parse_log(log_path)
+        request_times, lines, errors = parse_log(log_path)
     except OSError:
         logging.exception("Unable to open log file %s" % log_path)
+        sys.exit()
+    logging.info("%s lines read. %s errors found" % (lines, errors))
+    if float(errors)/lines > ERROR_THRESHOLD:
+        logging.error("Too many errors. Exiting.")
         sys.exit()
     logging.info("%s unique urls found" % len(request_times))
     url_statistics = count_statistics(request_times)
