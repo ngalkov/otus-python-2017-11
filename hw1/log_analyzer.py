@@ -26,7 +26,6 @@ TS_FILE = "./log_analyzer.ts"
 LOG_NAME_PREFIX = "nginx-access-ui.log-"
 LOG_ENCODING = "utf-8"
 ERROR_THRESHOLD = 0.5
-LINES_THRESHOLD = 100  # check at least this amount before exit on ERROR_THRESHOLD
 
 
 def parse_args():
