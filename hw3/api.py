@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
-# from abc import ABCMeta, abstractmethod
+from abc import ABC, abstractmethod
 import json
 import datetime
 import logging
@@ -43,7 +43,13 @@ def is_empty(value):
     return value in ["", (), [], {}, set()]
 
 
-class Field():
+class BaseField(ABC):
+    @abstractmethod
+    def validate(self, value):
+        pass
+
+
+class Field(BaseField):
     def __init__(self, required=False, nullable=True):
         self.required = required
         self.nullable = nullable
