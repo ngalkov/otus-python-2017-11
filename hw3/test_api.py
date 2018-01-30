@@ -153,18 +153,21 @@ class TestOnlineScoreHandler(unittest.TestCase):
                         }
 
     def test_valid(self):
-        response = online_score_handler(MethodRequest(self.request), self.ctx, self.store)
+        method_request = MethodRequest(self.request)
+        response = OnlineScoreRequest(method_request.arguments).handle(self.ctx, self.store, method_request.is_admin)
         self.assertTupleEqual(response, ({"score": 0.5}, OK))
         self.assertListEqual(sorted(self.ctx["has"]), ["first_name", "last_name"])
 
     def test_is_admin(self):
         self.request["login"] = ADMIN_LOGIN
-        response = online_score_handler(MethodRequest(self.request), self.ctx, self.store)
+        method_request = MethodRequest(self.request)
+        response = OnlineScoreRequest(method_request.arguments).handle(self.ctx, self.store, method_request.is_admin)
         self.assertTupleEqual(response, ({"score": 42}, OK))
 
     def test_validation_error(self):
         self.request["arguments"] = {"first_name": 666, "last_name": "Lname"}
-        response = online_score_handler(MethodRequest(self.request), self.ctx, self.store)
+        method_request = MethodRequest(self.request)
+        response = OnlineScoreRequest(method_request.arguments).handle(self.ctx, self.store, method_request.is_admin)
         self.assertTupleEqual(response, ({"first_name": "Field must be a string"}, INVALID_REQUEST))
 
 
@@ -179,7 +182,8 @@ class TestClientsInterestsHandler(unittest.TestCase):
                         }
 
     def test_valid(self):
-        response, code = clients_interests_handler(MethodRequest(self.request), self.ctx, self.store)
+        method_request = MethodRequest(self.request)
+        response, code = ClientsInterestsRequest(method_request.arguments).handle(self.ctx, self.store)
         self.assertEqual(code, OK)
         self.assertEqual(self.ctx["nclients"], 4)
         for cid, interests in response.items():
@@ -188,7 +192,8 @@ class TestClientsInterestsHandler(unittest.TestCase):
 
     def test_validation_error(self):
         self.request["arguments"] = {"client_ids": [1,2,3,4], "date": "99.99.1900"}
-        response = clients_interests_handler(MethodRequest(self.request), self.ctx, self.store)
+        method_request = MethodRequest(self.request)
+        response = ClientsInterestsRequest(method_request.arguments).handle(self.ctx, self.store)
         self.assertTupleEqual(response, ({"date": "Date must have format: DD.MM.YYYY"}, INVALID_REQUEST))
 
 
@@ -215,18 +220,18 @@ class TestMethodHandler(unittest.TestCase):
         assert mock_auth.called
 
     @patch("api.check_auth", return_value=True)
-    @patch("api.online_score_handler")
-    def test_online_score_handler_called(self, mock_handler, mock_auth):
+    @patch("api.OnlineScoreRequest.handle")
+    def test_online_score_handler_called(self, mock_method, mock_auth):
         self.request["body"]["method"] = "online_score"
         method_handler(self.request, self.ctx, self.store)
-        assert mock_handler.called
+        assert mock_method.called
 
     @patch("api.check_auth", return_value=True)
-    @patch("api.clients_interests_handler")
-    def test_clients_interests_handler_called(self, mock_handler, mock_auth):
+    @patch("api.ClientsInterestsRequest.handle")
+    def test_clients_interests_handler_called(self, mock_method, mock_auth):
         self.request["body"]["method"] = "clients_interests"
         method_handler(self.request, self.ctx, self.store)
-        assert mock_handler.called
+        assert mock_method.called
 
 
 if __name__ == "__main__":

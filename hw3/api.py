@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
-# from abc import ABCMeta, abstractmethod
+from abc import ABC, abstractmethod
 import json
 import datetime
 import logging
@@ -43,7 +43,13 @@ def is_empty(value):
     return value in ["", (), [], {}, set()]
 
 
-class Field():
+class BaseField(ABC):
+    @abstractmethod
+    def validate(self, value):
+        pass
+
+
+class Field(BaseField):
     def __init__(self, required=False, nullable=True):
         self.required = required
         self.nullable = nullable
@@ -189,8 +195,9 @@ class MetaRequest(type):
 
 class Request(metaclass=MetaRequest):
     def __init__(self, request):
+        self.request = request
         for name in self.schema:
-            value = request.get(name, None)
+            value = self.request.get(name, None)
             setattr(self, name, value)
 
     def validate(self):
@@ -207,6 +214,16 @@ class Request(metaclass=MetaRequest):
 class ClientsInterestsRequest(Request):
     client_ids = ClientIDsField(required=True)
     date = DateField(required=False, nullable=True)
+
+    def handle(self, ctx, store):
+        errors = self.validate()
+        if errors:
+            return errors, INVALID_REQUEST
+
+        ctx.update({"nclients": len(self.client_ids)})
+
+        interests = {str(cid): scoring.get_interests(store, cid) for cid in self.client_ids}
+        return interests, OK
 
 
 class OnlineScoreRequest(Request):
@@ -239,6 +256,22 @@ class OnlineScoreRequest(Request):
             if value is not None and not is_empty(value):
                 not_empty.append(field)
         return not_empty
+
+    def handle(self, ctx, store, is_admin):
+        errors = self.validate()
+        if errors:
+            return errors, INVALID_REQUEST
+        ctx.update({"has": self.non_empty_field()})
+        if is_admin:
+            return {"score": 42}, OK
+        score = scoring.get_score(store,
+                                  phone=self.phone,
+                                  email=self.email,
+                                  birthday=self.birthday,
+                                  gender=self.gender,
+                                  first_name=self.first_name,
+                                  last_name=self.last_name)
+        return {"score": score}, OK
 
 
 class MethodRequest(Request):
@@ -275,44 +308,12 @@ def method_handler(request, ctx, store):
         return errors, INVALID_REQUEST
     if not check_auth(method_request):
         return ERRORS[FORBIDDEN], FORBIDDEN
-    handlers = {"online_score": online_score_handler,
-                "clients_interests": clients_interests_handler
-                }
-    handler = handlers.get(method_request.method, None)
-    if handler:
-        return handler(method_request, ctx, store)
-    return ERRORS[NOT_FOUND], NOT_FOUND
-
-
-def online_score_handler(request, ctx, store):
-    online_score_request = OnlineScoreRequest(request.arguments)
-    errors = online_score_request.validate()
-    if errors:
-        return errors, INVALID_REQUEST
-    ctx.update({"has": online_score_request.non_empty_field()})
-    if request.is_admin:
-        return {"score": 42}, OK
-    score = scoring.get_score(store,
-                              phone=online_score_request.phone,
-                              email=online_score_request.email,
-                              birthday=online_score_request.birthday,
-                              gender=online_score_request.gender,
-                              first_name=online_score_request.first_name,
-                              last_name=online_score_request.last_name)
-    return {"score": score}, OK
-
-
-def clients_interests_handler(request, ctx, store):
-    clients_interests_request = ClientsInterestsRequest(request.arguments)
-
-    errors = clients_interests_request.validate()
-    if errors:
-        return errors, INVALID_REQUEST
-
-    ctx.update({"nclients": len(clients_interests_request.client_ids)})
-
-    interests = {str(cid): scoring.get_interests(store, cid) for cid in clients_interests_request.client_ids}
-    return interests, OK
+    if method_request.method == "online_score":
+        return OnlineScoreRequest(method_request.arguments).handle(ctx, store, method_request.is_admin)
+    elif method_request.method == "clients_interests":
+        return ClientsInterestsRequest(method_request.arguments).handle(ctx, store)
+    else:
+        return ERRORS[NOT_FOUND], NOT_FOUND
 
 
 class MainHTTPHandler(BaseHTTPRequestHandler):
