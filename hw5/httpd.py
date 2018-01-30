@@ -2,7 +2,6 @@
 # -*- coding: utf-8 -*-
 
 
-from abc import ABC, abstractmethod
 import socket
 import sys
 import os.path
@@ -12,17 +11,17 @@ import re
 import datetime
 import urllib.parse
 import shutil
-
+from threading import Thread
+from queue import Queue
 
 from http_status_code import *
 from mime_type import *
 
-SERVER_NAME = "VS Server/0.1"
+SERVER_NAME = "VS_Server/0.1"
 IMPLEMENTED_METHODS = ["GET", "HEAD"]
-HOST = "localhost"
-PORT = 8080
-BACKLOG = 5  # number of unaccepted connections that the system will allow before refusing
-TIMEOUT = 300
+# HOST = ""
+# PORT = 8080
+TIMEOUT = 100
 
 LOGGING = None  # path to log file
 
@@ -127,7 +126,6 @@ class HTTPresponse(object):
         self.wfile.write(buffer.encode("iso-8859-1"))
         self.wfile.write(b"\r\n")
 
-        # TODO: How to send byte sequence?
         # send body
         if not self.head_only:
             with open(self.body_path, "rb") as body_file:
@@ -167,7 +165,7 @@ class HTTPHandler(object):
 
         self.request = HTTPRequest(IMPLEMENTED_METHODS, self.rfile)
         if not self.parse_request():
-            # An error code has been sent, just exit
+            # If error happened, error code had been sent, just exit
             return
 
         # determine whether the connection should be closed or kept alive
@@ -193,15 +191,15 @@ class HTTPHandler(object):
     def parse_request(self):
         try:
             self.request.parse()
-            logging.info("%s:%s - Received request: " % self.address + '"%s"' % self.request.request_line)
+            logging.debug("%s:%s - Received request: " % self.address + '"%s"' % self.request.request_line)
         except EOFError:
-            logging.info("%s:%s - Client has closed the connection" % self.address)
+            logging.debug("%s:%s - Client has closed the connection" % self.address)
             return False
         except ValueError as e:
             self.send_error(e.args[0], e.args[1])
             return False
         except socket.timeout:
-            logging.error("%s:%s - Request timed out" % self.address)
+            logging.debug("%s:%s - Request timed out" % self.address)
             return False
         return True
 
@@ -216,9 +214,9 @@ class HTTPHandler(object):
             raise ValueError(FORBIDDEN, ERRORS[FORBIDDEN])
         if os.path.isdir(path):
             path = os.path.join(path, "index.html")
-            if not os.path.exists(path):
+            if not os.path.isfile(path):
                 raise ValueError(FORBIDDEN, ERRORS[FORBIDDEN])
-        elif not os.path.exists(path) or not os.path.isfile(path):
+        elif not os.path.isfile(path):
             raise ValueError(NOT_FOUND, ERRORS[NOT_FOUND])
         elif not os.access(path, os.R_OK):
             raise ValueError(FORBIDDEN, ERRORS[FORBIDDEN])
@@ -248,9 +246,9 @@ class HTTPHandler(object):
         """Send and log prepared response"""
         try:
             self.response.send()
-            logging.info("%s:%s - Send response: " % self.address + '"%s"' % self.response.status_line)
+            logging.debug("%s:%s - Send response: " % self.address + '"%s"' % self.response.status_line)
         except socket.timeout:
-            logging.error("%s:%s - Attempt to send response - timed out" % self.address)
+            logging.debug("%s:%s - Attempt to send response - timed out" % self.address)
             self.close_connection = True
             return
         except OSError:
@@ -283,39 +281,44 @@ class HTTPHandler(object):
 
 class TCPWorker(object):
     """Processes TCP stream with appropriate handler"""
-    def __init__(self):
-        pass
+    def __init__(self, clients):
+        self.clients = clients
 
-    def bind(self, client_socket, address, root, handler_class):
-        self.client_socket = client_socket
-        self.address = address
-        self.root = root
-        self.handler = handler_class(self.client_socket, self.address, root)
+    def bind(self):
+        self.client_socket, self.address, self.doc_root, self.handler_class = self.clients.get()
+        self.handler = self.handler_class(self.client_socket, self.address, self.doc_root)
 
     def run(self):
-        try:
-            self.handler.handle()
-        finally:
-            self.stop()
+        while True:
+            self.bind()
+            try:
+                self.handler.handle()
+            finally:
+                self.close()
 
-    def stop(self):
+    def close(self):
         self.handler.close()
         if self.client_socket:
             self.client_socket.close()
-        logging.info("%s:%s - Close connection" % self.address)
+        logging.debug("%s:%s - Close connection" % self.address)
 
 
 class Server(object):
-    def __init__(self, address, workers_count, root):
+    def __init__(self, address, workers_count, doc_root):
         self.address = address
         self.workers_count = workers_count
-        self.root = root
+        self.doc_root = doc_root
         self.socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        self.worker = TCPWorker()
+        self.clients = Queue()
+        for n in range(self.workers_count):
+            worker = TCPWorker(self.clients)
+            t = Thread(target=worker.run)
+            t.daemon = True
+            t.start()
         try:
             self.socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
             self.socket.bind(self.address)
-            self.socket.listen(BACKLOG)
+            self.socket.listen()
         except:
             self.close()
             raise
@@ -324,9 +327,8 @@ class Server(object):
         while True:
             try:
                 client_socket, address = self.socket.accept()
-                self.worker.bind(client_socket, address, self.root, HTTPHandler)
-                logging.info("%s:%s - Accept connection" % address)
-                self.worker.run()
+                logging.debug("%s:%s - Accept connection" % address)
+                self.clients.put((client_socket, address, self.doc_root, HTTPHandler))
             except OSError:
                 logging.exception("Error accepting connection:")
 
@@ -351,22 +353,20 @@ def main():
 
 if __name__ == "__main__":
     # Initialization
-    # As logging is not defined yet, send error messages to stderr
     parser = argparse.ArgumentParser()
-    parser.add_argument("-w", help="number of workers", type=int, default=1, dest="workers_count")
+    parser.add_argument("-a", help="address", default="localhost", dest="address")
+    parser.add_argument("-p", help="port", type=int, default=8080, dest="port")
+    parser.add_argument("-w", help="number of workers", type=int, default=10, dest="workers_count")
     parser.add_argument("-r", help="path to document root directory", dest="doc_root")
     args = parser.parse_args()
     doc_root = os.path.realpath(args.doc_root)
     if not os.path.isdir(doc_root):
         print("Unable to find document root directory")
         sys.exit()
-    if args.workers_count <= 0:
-        print("Number of workers should be > 0")
-        sys.exit()
     logging.basicConfig(filename=LOGGING, level=logging.INFO,
                         format="[%(asctime)s] %(levelname).1s %(message)s", datefmt="%Y.%m.%d %H:%M:%S")
-    server = Server((HOST, PORT), args.workers_count, doc_root)
-    logging.info("Starting server at %s" % PORT)
+    server = Server((args.address, args.port), args.workers_count, doc_root)
+    logging.info("Starting server at %s:%s" % (args.address, args.port))
     try:
         server.serve_forever()
     except KeyboardInterrupt:

@@ -75,7 +75,7 @@ class TestHTTPResponse(unittest.TestCase):
 
         self.assertEqual(self.response.status_line, "HTTP/1.1 200 OK")
         self.assertEqual(self.response.get_header("Header"), "Good")
-        self.assertEqual(self.response.get_header("Content-Length"), 18)
+        self.assertEqual(self.response.get_header("Content-Length"), 19)
         self.assertEqual(self.response.get_header("Content-Type"), "text/html")
         self.assertEqual(self.response.get_header("Server"), httpd.SERVER_NAME)
 
