@@ -1,7 +1,44 @@
+##############
+# Unit tests #
+##############
+
+import time
 import unittest
 from unittest.mock import patch
 
 from api import *
+from mock_redis import MockRedis
+from store import Store
+
+
+class TestStore(unittest.TestCase):
+    def test_db_ok(self):
+        mock_db = MockRedis()
+        store = Store(mock_db, mock_db)
+        store.set("ключ", "значение")
+        self.assertEqual(store.get("ключ"), "значение")
+        self.assertIsNone(store.get("неверный ключ"))
+
+    def test_db_error(self):
+        mock_db = MockRedis(error=True)
+        store = Store(mock_db, mock_db)
+        self.assertRaises(OSError, store.set, "ключ", "значение")
+        self.assertRaises(OSError, store.get, "ключ")
+
+    def test_db_cache_ok(self):
+        mock_db = MockRedis()
+        store = Store(mock_db, mock_db)
+        store.cache_set("ключ", 1, "значение")
+        self.assertEqual(store.cache_get("ключ"), "значение")
+        time.sleep(1)
+        self.assertIsNone(store.get("ключ"))
+        self.assertIsNone(store.get("неверный ключ"))
+
+    def test_db_cache_error(self):
+        mock_db = MockRedis(error=True)
+        store = Store(mock_db, mock_db)
+        self.assertIsNone(store.cache_set("ключ", 1, "значение"))
+        self.assertIsNone(store.cache_get("ключ"))
 
 
 class TestFieldObjects(unittest.TestCase):
@@ -16,7 +53,7 @@ class TestFieldObjects(unittest.TestCase):
 
     def test_CharFieldClass(self):
         # test if super().validate() called
-        self.assertEqual(CharField(required=True).validate(None),"Field is required")
+        self.assertEqual(CharField(required=True).validate(None), "Field is required")
         # test string validation
         self.assertEqual(CharField().validate("some string"), "")
         self.assertEqual(CharField().validate(0), "Field must be a string")
@@ -68,14 +105,15 @@ class TestFieldObjects(unittest.TestCase):
         self.assertEqual(GenderField(required=True).validate(None), "Field is required")
         # test gender validation
         for g in GENDERS:
-            self.assertEqual(GenderField().validate(g), "")
-        self.assertEqual(GenderField().validate(""), "Gender must be a number %s, %s, %s" % (UNKNOWN, MALE, FEMALE))
+            self.assertEqual(GenderField().validate(str(g)), "")
+        for g in ["", "A", "3"]:
+            self.assertEqual(GenderField().validate(""), "Gender must be a number %s, %s, %s" % (UNKNOWN, MALE, FEMALE))
 
     def test_ClientIDsFieldClass(self):
         # test if super().validate() called
         self.assertEqual(ClientIDsField(required=True).validate(None), "Field is required")
         # test client_ids validation
-        self.assertEqual(ClientIDsField().validate([1,2,3]), "")
+        self.assertEqual(ClientIDsField().validate([1, 2, 3]), "")
         for client_id in [1, [1, 2, "A"]]:
             self.assertEqual(ClientIDsField().validate(client_id), "Field must be a list of integer")
 
@@ -113,10 +151,10 @@ class TestRequestObjects(unittest.TestCase):
                               "field_err": "Date must have format: DD.MM.YYYY"})
 
     def test_MethodRequestClass(self):
-        # valid request
+        # invalid request - has invalid field
         self.assertDictEqual(MethodRequest({"login": "", "method": "", "token": "", "arguments": {}}).validate(),
                              {"method": "Field can't be empty"})
-        # invalid request - has invalid field
+        # valid request
         self.assertDictEqual(MethodRequest({"login": "", "method": "method", "token": "", "arguments": {}}).validate(),
                              {})
         # test is_admin
@@ -130,7 +168,8 @@ class TestRequestObjects(unittest.TestCase):
         self.assertFalse("online_score" in online_score_request.validate())
 
         # invalid request - has invalid field
-        online_score_request = OnlineScoreRequest({"first_name": "Fname", "last_name": "Lname", "birthday": "01.01.1900"})
+        online_score_request = OnlineScoreRequest(
+            {"first_name": "Fname", "last_name": "Lname", "birthday": "01.01.1900"})
         self.assertTrue(online_score_request.validate()["birthday"],
                         "Birthday must be not more than 70 years from now")
 
@@ -144,8 +183,9 @@ class TestRequestObjects(unittest.TestCase):
 
 class TestOnlineScoreHandler(unittest.TestCase):
     def setUp(self):
+        mock_db = MockRedis()
         self.ctx = {}
-        self.store = None
+        self.store = Store(mock_db, mock_db)
         self.request = {"login": "",
                         "method": "",
                         "token": "",
@@ -173,12 +213,13 @@ class TestOnlineScoreHandler(unittest.TestCase):
 
 class TestClientsInterestsHandler(unittest.TestCase):
     def setUp(self):
+        mock_db = MockRedis()
         self.ctx = {}
-        self.store = None
+        self.store = Store(mock_db, mock_db)
         self.request = {"login": "",
                         "method": "",
                         "token": "",
-                        "arguments": {"client_ids": [1,2,3,4], "date": "01.01.2000"}
+                        "arguments": {"client_ids": [1, 2, 3, 4], "date": "01.01.2000"}
                         }
 
     def test_valid(self):
@@ -188,10 +229,9 @@ class TestClientsInterestsHandler(unittest.TestCase):
         self.assertEqual(self.ctx["nclients"], 4)
         for cid, interests in response.items():
             self.assertIsInstance(interests, list)
-            self.assertEqual(len(interests), 2)
 
     def test_validation_error(self):
-        self.request["arguments"] = {"client_ids": [1,2,3,4], "date": "99.99.1900"}
+        self.request["arguments"] = {"client_ids": [1, 2, 3, 4], "date": "99.99.1900"}
         method_request = MethodRequest(self.request)
         response = ClientsInterestsRequest(method_request.arguments).handle(self.ctx, self.store)
         self.assertTupleEqual(response, ({"date": "Date must have format: DD.MM.YYYY"}, INVALID_REQUEST))
@@ -199,8 +239,9 @@ class TestClientsInterestsHandler(unittest.TestCase):
 
 class TestMethodHandler(unittest.TestCase):
     def setUp(self):
+        mock_db = MockRedis()
         self.ctx = {}
-        self.store = None
+        self.store = Store(mock_db, mock_db)
         self.request = {"body":
                             {"login": "",
                              "method": "",

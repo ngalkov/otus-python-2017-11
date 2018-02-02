@@ -9,6 +9,7 @@ import hashlib
 import uuid
 import re
 import scoring
+import store
 from optparse import OptionParser
 from http.server import HTTPServer, BaseHTTPRequestHandler
 
@@ -159,9 +160,12 @@ class GenderField(Field):
         # can't validate None
         if value is None:
             return None
-        if value not in GENDERS:
-            return "Gender must be a number %s, %s, %s" % (UNKNOWN, MALE, FEMALE)
-        return ""
+        try:
+            if int(value) in GENDERS:
+                return ""
+        except ValueError:
+            pass
+        return "Gender must be a number %s, %s, %s" % (UNKNOWN, MALE, FEMALE)
 
 
 class ClientIDsField(Field):
@@ -271,7 +275,7 @@ class OnlineScoreRequest(Request):
                                   gender=self.gender,
                                   first_name=self.first_name,
                                   last_name=self.last_name)
-        return {"score": score}, OK
+        return {"score": float(score)}, OK
 
 
 class MethodRequest(Request):
@@ -320,7 +324,7 @@ class MainHTTPHandler(BaseHTTPRequestHandler):
     router = {
         "method": method_handler
     }
-    store = None
+    store = store.Store()
 
     def get_request_id(self, headers):
         return headers.get('HTTP_X_REQUEST_ID', uuid.uuid4().hex)

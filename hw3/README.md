@@ -168,12 +168,15 @@ Responce:
 }
 ```
 
+## Requirements
+Python 3.6 or higher  
+Python packages according to `requirements.txt`  
+Redis 4.0
 
 ## Logging
 Script outputs all events occurred during the script execution to stdout or to the log file if it is specified.
 
-
 ## Tests 
-To perform unit testing, run from command line:  
-`python test_api.py`
+To perform testing, run from command line:  
+`python -m unittest discover -s tests`
 
