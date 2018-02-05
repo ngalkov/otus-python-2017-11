@@ -284,13 +284,13 @@ class TCPWorker(object):
     def __init__(self, clients):
         self.clients = clients
 
-    def bind(self):
+    def get_client_socket(self):
         self.client_socket, self.address, self.doc_root, self.handler_class = self.clients.get()
         self.handler = self.handler_class(self.client_socket, self.address, self.doc_root)
 
     def run(self):
         while True:
-            self.bind()
+            self.get_client_socket()
             try:
                 self.handler.handle()
             finally:
@@ -347,9 +347,6 @@ def get_real_path(root, relative_path):
     relative_path = no_leading_slashes.group(1)
     return os.path.normpath(os.path.join(root, relative_path))
 
-
-def main():
-    pass
 
 if __name__ == "__main__":
     # Initialization
