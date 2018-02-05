@@ -39,7 +39,7 @@ class HTTPRequest(object):
 
     def parse(self):
         # parse starting line
-        request_line = str(self.rfile.readline(), "iso-8859-1")
+        request_line = str(self.rfile.readline(), "ascii")
         if not request_line:  # client has closed the connection (0 bytes received)
             raise EOFError
         words = request_line.split()
@@ -63,11 +63,6 @@ class HTTPRequest(object):
             if not name:
                 raise ValueError(BAD_REQUEST, "Invalid header: %s" % line.rstrip())
             self.headers[name] = value
-
-        # read bosy
-        content_length = self.get_header("Content-Length")
-        if content_length is not None:
-            self.body = self.rfile.read(int(content_length))
 
     def get_header(self, name):
         return self.headers.get(name, None)
@@ -279,14 +274,14 @@ class HTTPHandler(object):
         self.rfile.close()
 
 
-class TCPWorker(object):
-    """Processes TCP stream with appropriate handler"""
+class Worker(object):
+    """Processes TCP stream"""
     def __init__(self, clients):
         self.clients = clients
 
     def get_client_socket(self):
-        self.client_socket, self.address, self.doc_root, self.handler_class = self.clients.get()
-        self.handler = self.handler_class(self.client_socket, self.address, self.doc_root)
+        self.client_socket, self.address, self.doc_root = self.clients.get()
+        self.handler = HTTPHandler(self.client_socket, self.address, self.doc_root)
 
     def run(self):
         while True:
@@ -311,7 +306,7 @@ class Server(object):
         self.socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self.clients = Queue()
         for n in range(self.workers_count):
-            worker = TCPWorker(self.clients)
+            worker = Worker(self.clients)
             t = Thread(target=worker.run)
             t.daemon = True
             t.start()
@@ -328,7 +323,7 @@ class Server(object):
             try:
                 client_socket, address = self.socket.accept()
                 logging.debug("%s:%s - Accept connection" % address)
-                self.clients.put((client_socket, address, self.doc_root, HTTPHandler))
+                self.clients.put((client_socket, address, self.doc_root))
             except OSError:
                 logging.exception("Error accepting connection:")
 
