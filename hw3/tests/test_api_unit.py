@@ -12,6 +12,11 @@ from store import Store
 
 
 class TestStore(unittest.TestCase):
+    def test_db_initialization_error(self):
+        store = Store(None, None)
+        self.assertRaises(OSError, store.set, "ключ", "значение")
+        self.assertRaises(OSError, store.get, "ключ")
+
     def test_db_ok(self):
         mock_db = MockRedis()
         store = Store(mock_db, mock_db)
@@ -24,6 +29,11 @@ class TestStore(unittest.TestCase):
         store = Store(mock_db, mock_db)
         self.assertRaises(OSError, store.set, "ключ", "значение")
         self.assertRaises(OSError, store.get, "ключ")
+
+    def test_db__cache_initialization_error(self):
+        store = Store(None, None)
+        self.assertIsNone(store.cache_set("ключ", 1, "значение"))
+        self.assertIsNone(store.cache_get("ключ"))
 
     def test_db_cache_ok(self):
         mock_db = MockRedis()
