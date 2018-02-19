@@ -60,7 +60,7 @@ class Store(object):
             return result.decode()
 
     @repeat_command()
-    def cache_set(self, key, lifetime, value):
+    def cache_set(self, key, value, lifetime):
         if self.db_cache is None:
             return None
         return self.db_cache.set(key, value, ex=lifetime)

@@ -32,13 +32,13 @@ class TestStore(unittest.TestCase):
 
     def test_db__cache_initialization_error(self):
         store = Store(None, None)
-        self.assertIsNone(store.cache_set("ключ", 1, "значение"))
+        self.assertIsNone(store.cache_set("ключ", "значение", 1))
         self.assertIsNone(store.cache_get("ключ"))
 
     def test_db_cache_ok(self):
         mock_db = MockRedis()
         store = Store(mock_db, mock_db)
-        store.cache_set("ключ", 1, "значение")
+        store.cache_set("ключ", "значение", 1)
         self.assertEqual(store.cache_get("ключ"), "значение")
         time.sleep(1)
         self.assertIsNone(store.get("ключ"))
@@ -47,7 +47,7 @@ class TestStore(unittest.TestCase):
     def test_db_cache_error(self):
         mock_db = MockRedis(error=True)
         store = Store(mock_db, mock_db)
-        self.assertIsNone(store.cache_set("ключ", 1, "значение"))
+        self.assertIsNone(store.cache_set("ключ", "значение", 1))
         self.assertIsNone(store.cache_get("ключ"))
 
 

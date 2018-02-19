@@ -10,7 +10,7 @@ import hashlib
 
 import api
 import store
-import mock_redis
+import redis
 
 
 def cases(cases):
@@ -25,11 +25,25 @@ def cases(cases):
 
 
 class TestSuite(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        # setup testing storage instance
+        cls.db = redis.StrictRedis(host="192.168.99.100", port=6379)
+        # set score testing values
+        cls.present_score_key = "uid:" + hashlib.md5("72345678901mail@mail.comNone".encode('utf-8')).hexdigest()
+        cls.missing_score_key = "uid:" + hashlib.md5("72345678902mail@mail.comNone".encode('utf-8')).hexdigest()
+        cls.db.set(cls.present_score_key, "123.45")
+        cls.db.delete(cls.missing_score_key)
+        # set interest testing values
+        cls.db.set('i:1', '["cars", "pets"]')
+        cls.db.set('i:2', '["sport", "books"]')
+        cls.db.set('i:3', '["hi-tech", "music"]')
+        cls.db.delete("i:4")
+
     def setUp(self):
         self.context = {}
         self.headers = {}
-        mock_db = mock_redis.MockRedis()
-        self.store = store.Store(mock_db, mock_db)
+        self.store = store.Store(self.db, self.db)
 
     def get_response(self, request):
         return api.method_handler({"body": request, "headers": self.headers}, self.context, self.store)
@@ -109,23 +123,61 @@ class TestSuite(unittest.TestCase):
         {"login": "", "method": "online_score", "token": "",
             "arguments": {"phone": 72345678901, "first_name": "Fname", "gender": 1}},  # no valid pair
         {"login": "", "method": "clients_interests", "token": "",
-         "arguments": {"client_ids": "bad_client_ids"}}  #  bad client_ids
+         "arguments": {"client_ids": "bad_client_ids"}}  # bad client_ids
     ])
     def test_argument_fail(self, mock_auth, request):
         _, code = self.get_response(request)
         self.assertEqual(api.INVALID_REQUEST, code)
 
-    # test whether return values correct
     @patch("api.check_auth", return_value=True)
-    def test_return_value(self, mock_auth):
+    def test_online_score_present_in_cache(self, mock_auth):
         request = {"login": "", "method": "online_score", "token": "",
-                "arguments": {"phone": 72345678901, "email": "mail@mail.com"}}
+                   "arguments": {"phone": 72345678901, "email": "mail@mail.com"}}
         response, code = self.get_response(request)
-        self.assertEqual(response["score"], 3,0)
+        self.assertEqual(response["score"], 123.45)
+
+    @patch("api.check_auth", return_value=True)
+    def test_online_score_absent_in_cache_(self, mock_auth):
+        request = {"login": "", "method": "online_score", "token": "",
+                   "arguments": {"phone": 72345678902, "email": "mail@mail.com"}}
+        response, code = self.get_response(request)
+        self.assertEqual(response["score"], 3.0)
+        # make sure value was stored in cache
+        self.assertEqual(self.store.get(self.missing_score_key), "3.0")
+
+    @patch("api.check_auth", return_value=True)
+    def test_clients_interests_present_in_storage(self, mock_auth):
         request = {"login": "", "method": "clients_interests", "token": "",
-                "arguments": {"client_ids": [1, 2, 3]}}
+                   "arguments": {"client_ids": [1, 2, 3]}}
         response, code = self.get_response(request)
-        self.assertDictEqual(response, {"1": [], "2": [], "3": []})
+        self.assertDictEqual(response, {"1": ["cars", "pets"], "2": ["sport", "books"], "3": ["hi-tech", "music"]})
+
+    @patch("api.check_auth", return_value=True)
+    def test_clients_interests_absent_in_storage(self, mock_auth):
+        request = {"login": "", "method": "clients_interests", "token": "",
+                   "arguments": {"client_ids": [4]}}
+        response, code = self.get_response(request)
+        self.assertDictEqual(response, {"4": []})
+
+    @patch("api.check_auth", return_value=True)
+    def test_broken_connection_to_cache(self, mock_auth):
+        # to simulate broken connection use port 80 - Redis can't be on this port
+        bad_db = redis.StrictRedis(host="localhost", port=80)
+        self.store = store.Store(bad_db, bad_db)
+        score_request = {"login": "", "method": "online_score", "token": "",
+                   "arguments": {"phone": 72345678901, "email": "mail@mail.com"}}
+        response, code = self.get_response(score_request)
+        self.assertEqual(response["score"], 3.0)
+
+    @patch("api.check_auth", return_value=True)
+    def test_broken_connection_to_storage(self, mock_auth):
+        # to simulate broken connection use port 80 - Redis can't be on this port
+        bad_db = redis.StrictRedis(host="localhost", port=80)
+        self.store = store.Store(bad_db, bad_db)
+        interest_request = {"login": "", "method": "clients_interests", "token": "",
+                   "arguments": {"client_ids": [1, 2, 3]}}
+        self.assertRaises(OSError, self.get_response, interest_request)
+
 
 
 if __name__ == "__main__":
