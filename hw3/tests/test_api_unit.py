@@ -5,10 +5,22 @@
 import time
 import unittest
 from unittest.mock import patch
+import functools
 
 from api import *
 from mock_redis import MockRedis
 from store import Store
+
+
+def cases(cases):
+    def decorator(func):
+        @functools.wraps(func)
+        def wrapper(*args):
+            for case in cases:
+                new_args = args + (case if isinstance(case, tuple) else (case,))
+                func(*new_args)
+        return wrapper
+    return decorator
 
 
 class TestStore(unittest.TestCase):
@@ -52,80 +64,109 @@ class TestStore(unittest.TestCase):
 
 
 class TestFieldObjects(unittest.TestCase):
-    def test_FieldClass(self):
+    def test_Field_required(self):
+        not_req = Field(required=False)
+        self.assertEqual(not_req.validate(None), "")
         req = Field(required=True)
         self.assertEqual(req.validate("something"), "")
         self.assertEqual(req.validate(None), "Field is required")
 
+    def test_Field_nullable(self):
         notnull = Field(nullable=False)
         self.assertEqual(notnull.validate("something"), "")
         self.assertEqual(notnull.validate(""), "Field can't be empty")
+        null = Field(nullable=True)
+        self.assertEqual(null.validate(""), "")
 
-    def test_CharFieldClass(self):
-        # test if super().validate() called
+    def test_CharField_validation_super_called(self):
         self.assertEqual(CharField(required=True).validate(None), "Field is required")
-        # test string validation
-        self.assertEqual(CharField().validate("some string"), "")
-        self.assertEqual(CharField().validate(0), "Field must be a string")
 
-    def test_ArgumentsFieldClass(self):
-        # test if super().validate() called
+    @cases([
+        ["some string", ""],
+        [0, "Field must be a string"],
+    ])
+    def test_CharField_validation(self, case):
+        self.assertEqual(CharField().validate(case[0]), case[1])
+
+    def test_ArgumentsField_validation_super_called(self):
         self.assertEqual(ArgumentsField(required=True).validate(None), "Field is required")
-        # test dict validation
-        self.assertEqual(ArgumentsField().validate({"A": 1, "B": 2}), "")
-        self.assertEqual(ArgumentsField().validate(0), "Field must be a dict")
 
-    def test_PhoneFieldClass(self):
-        # test if super().validate() called
+    @cases([
+        [{"A": 1, "B": 2}, ""],
+        [0, "Field must be a dict"],
+    ])
+    def test_ArgumentsField_validation(self, case):
+        self.assertEqual(ArgumentsField().validate(case[0]), case[1])
+
+    def test_PhoneField_validation_super_called(self):
         self.assertEqual(PhoneField(required=True).validate(None), "Field is required")
-        # test phone number validation
-        self.assertEqual(PhoneField().validate(72345678901), "")
-        self.assertEqual(PhoneField().validate("72345678901"), "")
-        for f in [7234567890,       # < 11 digits
-                  723456789012,     # > 11 digits
-                  12345678901,      # not starting with 7
-                  "7a345678901"     # has non-digit
-                  ]:
-            self.assertEqual(PhoneField().validate(f), "Field must be a valid phone")
 
-    def test_EmailFieldClass(self):
-        # test if super().validate() called
+    @cases([
+        [72345678901, ""],
+        ["72345678901", ""],
+        [7234567890, "Field must be a valid phone"],  # < 11 digits
+        [723456789012, "Field must be a valid phone"],  # > 11 digits
+        [12345678901, "Field must be a valid phone"],  # not starting with 7
+        ["7a345678901", "Field must be a valid phone"]  # has non-digit
+    ])
+    def test_PhoneField_validation(self, case):
+        self.assertEqual(PhoneField().validate(case[0]), case[1])
+
+    def test_EmailFieldClass_validation_super_called(self):
         self.assertEqual(EmailField().validate(123), "Field must be a string")
-        # test email validation
-        self.assertEqual(EmailField().validate("mail@mail.com"), "")
-        self.assertEqual(EmailField().validate("bad_email"), "Field must be a valid email")
 
-    def test_DateFieldClass(self):
-        # test if super().validate() called
+    @cases([
+        ["mail@mail.com", ""],
+        ["bad_email", "Field must be a valid email"],
+    ])
+    def test_EmailFieldClass_validation(self, case):
+        self.assertEqual(EmailField().validate(case[0]), case[1])
+
+    def test_DateFieldClass_validation_super_called(self):
         self.assertEqual(DateField().validate(123), "Field must be a string")
-        # test date validation
-        self.assertEqual(DateField().validate("31.12.2000"), "")
-        for d in ["32.12.2000", "31.13.2000", "31.12.00", ""]:
-            self.assertEqual(DateField().validate(d), "Date must have format: DD.MM.YYYY")
 
-    def test_BirthDayFieldClass(self):
-        # test if super().validate() called
+    @cases([
+        ["31.12.2000", ""],
+        ["32.12.2000", "Date must have format: DD.MM.YYYY"],
+        ["31.13.2000", "Date must have format: DD.MM.YYYY"],
+        ["31.12.00", "Date must have format: DD.MM.YYYY"],
+        ["", "Date must have format: DD.MM.YYYY"],
+    ])
+    def test_DateFieldClass_validation(self, case):
+        self.assertEqual(DateField().validate(case[0]), case[1])
+
+    def test_BirthDayFieldClass_validation_super_called(self):
         self.assertEqual(BirthDayField().validate(""), "Date must have format: DD.MM.YYYY")
-        # test birthday validation
-        self.assertEqual(BirthDayField().validate("31.12.2000"), "")
-        self.assertEqual(BirthDayField().validate("01.01.1900"), "Birthday must be not more than 70 years from now")
 
-    def test_GenderFieldClass(self):
-        # test if super().validate() called
+    @cases([
+        ["31.12.2000", ""],
+        ["01.01.1900", "Birthday must be not more than 70 years from now"],
+    ])
+    def test_BirthDayFieldClass_validation(self, case):
+        self.assertEqual(BirthDayField().validate(case[0]), case[1])
+
+    def test_GenderFieldClass_validation_super_called(self):
         self.assertEqual(GenderField(required=True).validate(None), "Field is required")
-        # test gender validation
-        for g in GENDERS:
-            self.assertEqual(GenderField().validate(str(g)), "")
-        for g in ["", "A", "3"]:
-            self.assertEqual(GenderField().validate(""), "Gender must be a number %s, %s, %s" % (UNKNOWN, MALE, FEMALE))
 
-    def test_ClientIDsFieldClass(self):
-        # test if super().validate() called
+    @cases([
+        ["0", ""], ["1", ""], ["2", ""],
+        ["", "Gender must be a number 0, 1, 2"],
+        ["A", "Gender must be a number 0, 1, 2"],
+        ["3", "Gender must be a number 0, 1, 2"],
+    ])
+    def test_GenderFieldClass_validation(self, case):
+        self.assertEqual(GenderField().validate(case[0]), case[1])
+
+    def test_ClientIDsFieldClass_validation_super_called(self):
         self.assertEqual(ClientIDsField(required=True).validate(None), "Field is required")
-        # test client_ids validation
-        self.assertEqual(ClientIDsField().validate([1, 2, 3]), "")
-        for client_id in [1, [1, 2, "A"]]:
-            self.assertEqual(ClientIDsField().validate(client_id), "Field must be a list of integer")
+
+    @cases([
+        [[1, 2, 3], ""],
+        [1, "Field must be a list of integer"],
+        [[1, 2, "A"], "Field must be a list of integer"],
+    ])
+    def test_ClientIDsFieldClass_validation(self, case):
+        self.assertEqual(ClientIDsField().validate(case[0]), case[1])
 
 
 class TestRequestObjects(unittest.TestCase):

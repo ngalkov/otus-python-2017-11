@@ -52,16 +52,17 @@ class TestSuite(unittest.TestCase):
         _, code = self.get_response({})
         self.assertEqual(api.INVALID_REQUEST, code)
 
-    def test_auth_ok(self):
+    def test_admin_auth_ok(self):
         request = {"login": "", "method": "online_score", "token": "", "arguments": {}}
-        # test admin login
         admin_msg = (datetime.datetime.now().strftime("%Y%m%d%H") + api.ADMIN_SALT).encode()
         admin_digest = hashlib.sha512(admin_msg).hexdigest()
         request["login"] = "admin"
         request["token"] = admin_digest
         _, code = self.get_response(request)
         self.assertNotEqual(api.FORBIDDEN, code)
-        # test user login
+
+    def test_user_auth_ok(self):
+        request = {"login": "", "method": "online_score", "token": "", "arguments": {}}
         user_msg = ("user1" + api.SALT).encode()
         user_digest = hashlib.sha512(user_msg).hexdigest()
         request["login"] = "user1"

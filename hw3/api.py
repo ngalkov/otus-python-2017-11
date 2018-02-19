@@ -63,8 +63,7 @@ class Field(BaseField):
         elif is_empty(value):
             if not self.nullable:
                 return "Field can't be empty"
-        else:
-            return ""
+        return ""
 
 
 class CharField(Field):
