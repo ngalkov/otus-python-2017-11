@@ -156,8 +156,8 @@ class HTTPHandler(object):
 
     def handle_one_request(self):
         self.close_connection = True
-        # parse request
 
+        # parse request
         self.request = HTTPRequest(IMPLEMENTED_METHODS, self.rfile)
         if not self.parse_request():
             # If error happened, error code had been sent, just exit
@@ -254,7 +254,11 @@ class HTTPHandler(object):
     def send_error(self, code, msg=None):
         """Send and log error"""
         self.process_error(code, msg)
-        self.send_response()
+        try:
+            self.response.send()
+            logging.debug("%s:%s - Send error: " % self.address + '"%s"' % self.response.status_line)
+        except:
+            logging.exception("%s:%s - Exception while sending error: " % self.address)
 
     def parse_url(self, url):
         """Extract path and query from generic URI"""
